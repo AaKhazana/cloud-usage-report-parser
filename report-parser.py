@@ -121,6 +121,8 @@ def upload_file():
         file_path = os.path.join(os.path.dirname(__file__), 'uploads', file.filename)
         file.save(file_path)
         parsed_report_data = parse_excel_report(file_path)
+        # delete the uploaded file
+        os.remove(file_path)
         return parsed_report_data
 
 if __name__ == "__main__":
