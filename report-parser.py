@@ -2,6 +2,7 @@
 
 import pandas as pd
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import os
 import re
 
@@ -107,6 +108,7 @@ def parse_excel_report(file_path):
     return result
 
 app = Flask(__name__)
+CORS(app)
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
