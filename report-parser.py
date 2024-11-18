@@ -9,7 +9,7 @@ import re
 
 def drop_columns_from_df(df: pd.Series):
     return df.drop(labels=[
-        'Region', 'Resource Type', 'Tag', 'Resource ID', 'Tenant Name',
+        'Region', 'Resource Type', 'Tag', 'Tenant Name',
         'Tenant ID', 'VDC Name', 'VDC ID', 'Resource Space Name', 'Resource Space ID',
         'Enterprise Project ID', 'Metering Unit Name', 'Unit Price (PKR)', 'Unit',
         'Unit Price Unit', 'Fee (PKR)'
