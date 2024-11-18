@@ -72,7 +72,7 @@ def parse_excel_report(file_path):
                     for _, row in max_duration_rows.iterrows():
                         parsed_metrics = parse_ecs_data(row['Metering Metric'])
                         instances_list.append(
-                            {**drop_columns_from_df(row).to_dict(), **parsed_metrics, 'serviceType': 'clustered'})
+                            {**drop_columns_from_df(row).to_dict(), **parsed_metrics, 'Service Type': 'clustered'})
 
                 if len(rt_group_dedicated) > 0:
                     max_duration_rows = rt_group_dedicated.loc[rt_group_dedicated.groupby(
@@ -80,7 +80,7 @@ def parse_excel_report(file_path):
                     for _, row in max_duration_rows.iterrows():
                         parsed_metrics = parse_ecs_data(row['Metering Metric'])
                         instances_list.append(
-                            {**drop_columns_from_df(row).to_dict(), **parsed_metrics, 'serviceType': 'dedicated'})
+                            {**drop_columns_from_df(row).to_dict(), **parsed_metrics, 'Service Type': 'dedicated'})
 
             elif resource_type.lower() == 'evs':
                 # Filter rows where Tag contains 'cce' or 'cluster' (case-insensitive)
@@ -103,14 +103,14 @@ def parse_excel_report(file_path):
                             'Resource ID')['Usage Duration'].idxmax()]
                         for _, row in max_duration_rows.iterrows():
                             instances_list.append(
-                                {**drop_columns_from_df(row).to_dict(), 'serviceType': 'clustered', 'storageType': 'ssd'})
+                                {**drop_columns_from_df(row).to_dict(), 'Service Type': 'clustered', 'Storage Type': 'ssd'})
 
                     if len(rt_group_hdd) > 0:
                         max_duration_rows = rt_group_hdd.loc[rt_group_hdd.groupby(
                             'Resource ID')['Usage Duration'].idxmax()]
                         for _, row in max_duration_rows.iterrows():
                             instances_list.append(
-                                {**drop_columns_from_df(row).to_dict(), 'serviceType': 'clustered', 'storageType': 'hdd'})
+                                {**drop_columns_from_df(row).to_dict(), 'Service Type': 'clustered', 'Storage Type': 'hdd'})
 
                 if len(rt_group_dedicated) > 0:
                     # Filter rows where Tag contains 'cce' or 'cluster' (case-insensitive)
@@ -124,14 +124,14 @@ def parse_excel_report(file_path):
                             'Resource ID')['Usage Duration'].idxmax()]
                         for _, row in max_duration_rows.iterrows():
                             instances_list.append(
-                                {**drop_columns_from_df(row).to_dict(), 'serviceType': 'dedicated', 'storageType': 'ssd'})
+                                {**drop_columns_from_df(row).to_dict(), 'Service Type': 'dedicated', 'Storage Type': 'ssd'})
 
                     if len(rt_group_hdd) > 0:
                         max_duration_rows = rt_group_hdd.loc[rt_group_hdd.groupby(
                             'Resource ID')['Usage Duration'].idxmax()]
                         for _, row in max_duration_rows.iterrows():
                             instances_list.append(
-                                {**drop_columns_from_df(row).to_dict(), 'serviceType': 'dedicated', 'storageType': 'hdd'})
+                                {**drop_columns_from_df(row).to_dict(), 'Service Type': 'dedicated', 'Storage Type': 'hdd'})
             else:
                 max_duration_rows = rt_group.loc[rt_group.groupby(
                     'Resource ID')['Usage Duration'].idxmax()]
