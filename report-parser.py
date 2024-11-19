@@ -37,6 +37,10 @@ def parse_ecs_data(data_string):
         return None
 
 
+def constrain_value(value):
+    return value if value <= 730 else 730
+
+
 def parse_excel_report(file_path):
     # Read the Excel file
     df = pd.read_excel(file_path)
@@ -48,7 +52,7 @@ def parse_excel_report(file_path):
 
     # Calculate usage duration for all rows at once and truncate to 2 decimal places
     df['Usage Duration'] = ((df['Meter End Time (UTC+05:00)'] -
-                            df['Meter Begin Time (UTC+05:00)']).dt.total_seconds() / 3600).round(2)
+                            df['Meter Begin Time (UTC+05:00)']).dt.total_seconds() / 3600).round(2).map(constrain_value)
 
     # Create nested dictionary using groupby
     result = {'regions': []}
@@ -67,17 +71,13 @@ def parse_excel_report(file_path):
                 ).str.contains('cce|cluster', na=False)]
 
                 if len(rt_group_cluster) > 0:
-                    max_duration_rows = rt_group_cluster.loc[rt_group_cluster.groupby(
-                        'Resource ID')['Usage Duration'].idxmax()]
-                    for _, row in max_duration_rows.iterrows():
+                    for _, row in rt_group_cluster.iterrows():
                         parsed_metrics = parse_ecs_data(row['Metering Metric'])
                         instances_list.append(
                             {**drop_columns_from_df(row).to_dict(), **parsed_metrics, 'Service Type': 'clustered'})
 
                 if len(rt_group_dedicated) > 0:
-                    max_duration_rows = rt_group_dedicated.loc[rt_group_dedicated.groupby(
-                        'Resource ID')['Usage Duration'].idxmax()]
-                    for _, row in max_duration_rows.iterrows():
+                    for _, row in rt_group_dedicated.iterrows():
                         parsed_metrics = parse_ecs_data(row['Metering Metric'])
                         instances_list.append(
                             {**drop_columns_from_df(row).to_dict(), **parsed_metrics, 'Service Type': 'dedicated'})
@@ -99,16 +99,12 @@ def parse_excel_report(file_path):
                     ).str.contains('sata', na=False)]
 
                     if len(rt_group_ssd) > 0:
-                        max_duration_rows = rt_group_ssd.loc[rt_group_ssd.groupby(
-                            'Resource ID')['Usage Duration'].idxmax()]
-                        for _, row in max_duration_rows.iterrows():
+                        for _, row in rt_group_ssd.iterrows():
                             instances_list.append(
                                 {**drop_columns_from_df(row).to_dict(), 'Service Type': 'clustered', 'Storage Type': 'ssd'})
 
                     if len(rt_group_hdd) > 0:
-                        max_duration_rows = rt_group_hdd.loc[rt_group_hdd.groupby(
-                            'Resource ID')['Usage Duration'].idxmax()]
-                        for _, row in max_duration_rows.iterrows():
+                        for _, row in rt_group_hdd.iterrows():
                             instances_list.append(
                                 {**drop_columns_from_df(row).to_dict(), 'Service Type': 'clustered', 'Storage Type': 'hdd'})
 
@@ -120,23 +116,16 @@ def parse_excel_report(file_path):
                     ).str.contains('sata', na=False)]
 
                     if len(rt_group_ssd) > 0:
-                        max_duration_rows = rt_group_ssd.loc[rt_group_ssd.groupby(
-                            'Resource ID')['Usage Duration'].idxmax()]
-                        for _, row in max_duration_rows.iterrows():
+                        for _, row in rt_group_ssd.iterrows():
                             instances_list.append(
                                 {**drop_columns_from_df(row).to_dict(), 'Service Type': 'dedicated', 'Storage Type': 'ssd'})
 
                     if len(rt_group_hdd) > 0:
-                        max_duration_rows = rt_group_hdd.loc[rt_group_hdd.groupby(
-                            'Resource ID')['Usage Duration'].idxmax()]
-                        for _, row in max_duration_rows.iterrows():
+                        for _, row in rt_group_hdd.iterrows():
                             instances_list.append(
                                 {**drop_columns_from_df(row).to_dict(), 'Service Type': 'dedicated', 'Storage Type': 'hdd'})
             else:
-                max_duration_rows = rt_group.loc[rt_group.groupby(
-                    'Resource ID')['Usage Duration'].idxmax()]
-
-                for _, row in max_duration_rows.iterrows():
+                for _, row in rt_group.iterrows():
                     instances_list.append(drop_columns_from_df(row).to_dict())
 
             services_list.append({
