@@ -5,9 +5,14 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
 import re
+import sqlite
+
+db = sqlite.DatabaseService('invoice.db')
+
+db.run_migrations_from_folder('migrations')
 
 
-def drop_columns_from_df(df: pd.Series):
+def drop_columns_from_df(df: pd.Series) -> pd.Series:
     return df.drop(labels=[
         'Region', 'Resource Type', 'Tag', 'Tenant Name',
         'Tenant ID', 'VDC Name', 'VDC ID', 'Resource Space Name', 'Resource Space ID',
@@ -168,5 +173,5 @@ if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
         port=5000,
-        debug=True
+        # debug=True
     )
