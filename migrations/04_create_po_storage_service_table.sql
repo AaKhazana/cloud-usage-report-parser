@@ -1,0 +1,12 @@
+CREATE TABLE IF NOT EXISTS po_storage_services (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    service_name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    gbs INTEGER NOT NULL,
+    duration INTEGER NOT NULL DEFAULT 730,
+    price REAL NOT NULL,
+    user_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES po_users(id)
+);

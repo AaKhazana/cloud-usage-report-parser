@@ -1,153 +1,17 @@
 #!/usr/bin/env python3
 
-import pandas as pd
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
-import re
+import argparse
 import sqlite
-
-db = sqlite.DatabaseService('invoice.db')
-
-db.run_migrations_from_folder('migrations')
-
-
-def drop_columns_from_df(df: pd.Series) -> pd.Series:
-    return df.drop(labels=[
-        'Region', 'Resource Type', 'Tag', 'Tenant Name',
-        'Tenant ID', 'VDC Name', 'VDC ID', 'Resource Space Name', 'Resource Space ID',
-        'Enterprise Project ID', 'Metering Unit Name', 'Unit Price (PKR)', 'Unit',
-        'Unit Price Unit', 'Fee (PKR)'
-    ])
-
-
-def parse_ecs_data(data_string):
-    # regex to parse the metering metric string
-    pattern = r"ECS-(\d+)\s*vCPUs?\s*\|?\s*(\d+)\s*(GiB|GB)?"
-
-    match = re.search(pattern, data_string)
-
-    if match:
-        # Extract values and normalize memory unit if missing
-        vcpus = int(match.group(1))
-        memory = int(match.group(2))
-        memory_unit = match.group(3) if match.group(3) else "GB"
-
-        return {
-            "vCPUs": vcpus,
-            "Memory": memory,
-            "MemoryUnit": memory_unit
-        }
-    else:
-        return None
-
-
-def constrain_value(value):
-    return value if value <= 730 else 730
-
-
-def parse_excel_report(file_path):
-    # Read the Excel file
-    df = pd.read_excel(file_path)
-
-    # Convert time columns to datetime once
-    df['Meter Begin Time (UTC+05:00)'] = pd.to_datetime(
-        df['Meter Begin Time (UTC+05:00)'])
-    df['Meter End Time (UTC+05:00)'] = pd.to_datetime(df['Meter End Time (UTC+05:00)'])
-
-    # Calculate usage duration for all rows at once and truncate to 2 decimal places
-    df['Usage Duration'] = ((df['Meter End Time (UTC+05:00)'] -
-                            df['Meter Begin Time (UTC+05:00)']).dt.total_seconds() / 3600).round(2).map(constrain_value)
-
-    # Create nested dictionary using groupby
-    result = {'regions': []}
-    for region, region_group in df.groupby('Region'):
-        services_list = []
-        for resource_type, rt_group in region_group.groupby('Resource Type'):
-            instances_list = []
-
-            if resource_type.lower() == 'ecs':
-                # Filter rows where Tag contains 'cce' or 'cluster' (case-insensitive)
-                rt_group_cluster = rt_group[rt_group['Tag'].str.lower(
-                ).str.contains('cce|cluster', na=False)]
-
-                # Filter rows where Tag doesn't contains 'cce' or 'cluster' (case-insensitive)
-                rt_group_dedicated = rt_group[~rt_group['Tag'].str.lower(
-                ).str.contains('cce|cluster', na=False)]
-
-                if len(rt_group_cluster) > 0:
-                    for _, row in rt_group_cluster.iterrows():
-                        parsed_metrics = parse_ecs_data(row['Metering Metric'])
-                        instances_list.append(
-                            {**drop_columns_from_df(row).to_dict(), **parsed_metrics, 'Service Type': 'clustered'})
-
-                if len(rt_group_dedicated) > 0:
-                    for _, row in rt_group_dedicated.iterrows():
-                        parsed_metrics = parse_ecs_data(row['Metering Metric'])
-                        instances_list.append(
-                            {**drop_columns_from_df(row).to_dict(), **parsed_metrics, 'Service Type': 'dedicated'})
-
-            elif resource_type.lower() == 'evs':
-                # Filter rows where Tag contains 'cce' or 'cluster' (case-insensitive)
-                rt_group_cluster = rt_group[rt_group['Tag'].str.lower(
-                ).str.contains('cce|cluster', na=False)]
-
-                # Filter rows where Tag doesn't contains 'cce' or 'cluster' (case-insensitive)
-                rt_group_dedicated = rt_group[~rt_group['Tag'].str.lower(
-                ).str.contains('cce|cluster', na=False)]
-
-                if len(rt_group_cluster) > 0:
-                    # Filter rows where Tag contains 'cce' or 'cluster' (case-insensitive)
-                    rt_group_ssd = rt_group_cluster[rt_group_cluster['Metering Metric'].str.lower(
-                    ).str.contains('ssd', na=False)]
-                    rt_group_hdd = rt_group_cluster[rt_group_cluster['Metering Metric'].str.lower(
-                    ).str.contains('sata', na=False)]
-
-                    if len(rt_group_ssd) > 0:
-                        for _, row in rt_group_ssd.iterrows():
-                            instances_list.append(
-                                {**drop_columns_from_df(row).to_dict(), 'Service Type': 'clustered', 'Storage Type': 'ssd'})
-
-                    if len(rt_group_hdd) > 0:
-                        for _, row in rt_group_hdd.iterrows():
-                            instances_list.append(
-                                {**drop_columns_from_df(row).to_dict(), 'Service Type': 'clustered', 'Storage Type': 'hdd'})
-
-                if len(rt_group_dedicated) > 0:
-                    # Filter rows where Tag contains 'cce' or 'cluster' (case-insensitive)
-                    rt_group_ssd = rt_group_dedicated[rt_group_dedicated['Metering Metric'].str.lower(
-                    ).str.contains('ssd', na=False)]
-                    rt_group_hdd = rt_group_dedicated[rt_group_dedicated['Metering Metric'].str.lower(
-                    ).str.contains('sata', na=False)]
-
-                    if len(rt_group_ssd) > 0:
-                        for _, row in rt_group_ssd.iterrows():
-                            instances_list.append(
-                                {**drop_columns_from_df(row).to_dict(), 'Service Type': 'dedicated', 'Storage Type': 'ssd'})
-
-                    if len(rt_group_hdd) > 0:
-                        for _, row in rt_group_hdd.iterrows():
-                            instances_list.append(
-                                {**drop_columns_from_df(row).to_dict(), 'Service Type': 'dedicated', 'Storage Type': 'hdd'})
-            else:
-                for _, row in rt_group.iterrows():
-                    instances_list.append(drop_columns_from_df(row).to_dict())
-
-            services_list.append({
-                'serviceName': resource_type,
-                'instances': instances_list
-            })
-
-        result['regions'].append({
-            'regionName': region,
-            'services': services_list
-        })
-
-    return result
-
+from utils import parse_excel_report
+from po_controller import po_controller
 
 app = Flask(__name__)
 CORS(app)
+
+app.register_blueprint(po_controller, url_prefix='/po')
 
 
 @app.route('/upload', methods=['POST'])
@@ -169,9 +33,123 @@ def upload_file():
         return parsed_report_data
 
 
+@app.route('/unit-costs', methods=['GET'])
+def get_unit_costs():
+    try:
+        db = sqlite.DatabaseService()
+        results = db.run_query("SELECT * FROM unit_costs")
+
+        unit_costs = []
+        for row in results:
+            unit_costs.append({
+                "id": row[0],
+                "resource_desc": row[1],
+                "profit_margin": row[2],
+                "unit_cost": row[3],
+                "unit_cost_margin": row[4],
+                "appx_monthly_cost": row[5],
+                "remarks": row[6]
+            })
+
+        return jsonify({"unit_costs": unit_costs})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/unit-costs', methods=['POST'])
+def update_unit_costs():
+    try:
+        data = request.get_json()
+        if not isinstance(data, list):
+            return jsonify({"error": "Request body must be an array"}), 400
+
+        if len(data) == 0:
+            return jsonify({"error": "No data to update"}), 400
+
+        db = sqlite.DatabaseService()
+        updated_count = 0
+
+        for item in data:
+            if 'id' not in item:
+                continue
+
+            if len(item) <= 1:
+                continue
+
+            # Check if record exists
+            result = db.run_query(
+                "SELECT * FROM unit_costs WHERE id = ?", (item['id'],))
+            if not result:
+                continue
+
+            unit_cost = item.get('unit_cost', result[0][3])
+            unit_cost_margin = unit_cost + unit_cost * \
+                (item.get('profit_margin', result[0][2]) / 100)
+            appx_monthly_cost = unit_cost_margin * 730
+
+            # Update the record
+            update_query = """
+                UPDATE unit_costs 
+                SET resource_desc = ?,
+                    profit_margin = ?,
+                    unit_cost = ?,
+                    unit_cost_margin = ?,
+                    appx_monthly_cost = ?,
+                    remarks = ?
+                WHERE id = ?
+            """
+
+            db.run_query(update_query, (
+                item.get('resource_desc', result[0][1]),
+                item.get('profit_margin', result[0][2]),
+                unit_cost,
+                unit_cost_margin,
+                appx_monthly_cost,
+                item.get('remarks', result[0][6]),
+                item['id']
+            ))
+            updated_count += 1
+
+        db.commit()
+        return jsonify({
+            "message": f"Successfully updated {updated_count} unit costs",
+            "updated_count": updated_count
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
+    # read args
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--host', type=str, default='0.0.0.0')
+    parser.add_argument('--port', type=int, default=5000)
+    parser.add_argument('--debug', type=bool, default=False)
+    parser.add_argument('--migrateall', type=str, default='',
+                        help='run all migrations from folder')
+    parser.add_argument('--migrate', type=str, default='',
+                        help='run single migration file')
+    args = parser.parse_args()
+
+    if args.migrateall:
+        if not os.path.exists(args.migrateall):
+            print(f"Migrations folder does not exist: {args.migrateall}")
+            exit(1)
+        print(f"Applying all migrations from folder: {args.migrateall}")
+        db = sqlite.DatabaseService()
+        db.run_migrations_from_folder(args.migrateall)
+        db.commit()
+        exit(0)
+
+    if args.migrate:
+        db = sqlite.DatabaseService()
+        print(f"Migrating from file: {args.migrate}")
+        db.run_migration(args.migrate)
+        db.commit()
+        exit(0)
+
     app.run(
-        host="0.0.0.0",
-        port=5000,
-        # debug=True
+        host=args.host,
+        port=args.port,
+        debug=args.debug
     )
