@@ -1,5 +1,37 @@
 import pandas as pd
+from datetime import datetime
 import re
+from enum import Enum
+import sqlite
+
+MONTH_31_DAYS = [1, 3, 5, 7, 8, 10, 12]
+MONTH_30_DAYS = [4, 6, 9, 11]
+MONTH_28_DAYS = [2]
+
+
+class ResourceType(Enum):
+    ECS = "ecs"
+    EVS = "evs"
+    EIP = "eip"
+    EIP_BANDWIDTH = "eip-bandwidth"
+    ELB = "elb"
+    NAT = "nat-gateway"
+    VPN = "virtual-private-network"
+    VPN_BANDWIDTH = "vpn-bandwidth"
+
+
+class StorageType(Enum):
+    SSD = "ssd"
+    HDD = "hdd"
+
+
+class ServiceTag(Enum):
+    CLUSTERED = "clustered"
+    DEDICATED = "dedicated"
+
+
+def trim_lower_normalize(string: str) -> str:
+    return string.strip().lower().replace(" ", "-")
 
 
 def drop_columns_from_df(df: pd.Series) -> pd.Series:
@@ -11,7 +43,7 @@ def drop_columns_from_df(df: pd.Series) -> pd.Series:
     ])
 
 
-def parse_ecs_data(data_string):
+def parse_ecs_data(data_string: str) -> dict | None:
     # regex to parse the metering metric string
     pattern = r"ECS-(\d+)\s*vCPUs?\s*\|?\s*(\d+)\s*(GiB|GB)?"
 
@@ -32,8 +64,52 @@ def parse_ecs_data(data_string):
         return None
 
 
-def constrain_value(value):
-    return value if value <= 730 else 730
+def constrain_value(value, month):
+    if month in MONTH_31_DAYS:
+        if value >= 730:
+            return 730
+        else:
+            return value
+    elif month in MONTH_30_DAYS:
+        if value >= 720:
+            return 730
+        else:
+            return value
+    elif month in MONTH_28_DAYS:
+        if value >= 672:
+            return 730
+        else:
+            return value
+    else:
+        return value
+
+
+def calculate_usage_cost(data: pd.Series, rt: ResourceType, storage_type: StorageType = None, service_tag: ServiceTag = None):
+    db = sqlite.DatabaseService()
+    query = "SELECT * FROM unit_costs"
+    costs: list = db.run_query(query)
+    usage_cost = 0
+    if rt == ResourceType.ECS:
+        if service_tag == ServiceTag.CLUSTERED:
+            usage_cost = ((data['Memory'] * costs[1][4]) +
+                          (data['vCPUs'] * costs[6][4])) * data['Usage Duration']
+        elif service_tag == ServiceTag.DEDICATED:
+            usage_cost = ((data['Memory'] * costs[1][4]) +
+                          (data['vCPUs'] * costs[0][4])) * data['Usage Duration']
+    elif rt == ResourceType.EVS:
+        if storage_type == StorageType.SSD:
+            usage_cost = (data['Usage'] * costs[3][4]) * data['Usage Duration']
+        elif storage_type == StorageType.HDD:
+            usage_cost = (data['Usage'] * costs[2][4]) * data['Usage Duration']
+    elif rt == ResourceType.EIP:
+        usage_cost = (data['Usage'] * costs[14][4]) * data['Usage Duration']
+    elif rt == ResourceType.EIP_BANDWIDTH:
+        usage_cost = (data['Usage'] * costs[15][5])
+    else:
+        # TODO: update this when services are not value added
+        pass
+
+    return usage_cost
 
 
 def parse_excel_report(file_path):
@@ -45,9 +121,12 @@ def parse_excel_report(file_path):
         df['Meter Begin Time (UTC+05:00)'])
     df['Meter End Time (UTC+05:00)'] = pd.to_datetime(df['Meter End Time (UTC+05:00)'])
 
+    report_month = df['Meter Begin Time (UTC+05:00)'].dt.month.unique()[0]
     # Calculate usage duration for all rows at once and truncate to 2 decimal places
-    df['Usage Duration'] = ((df['Meter End Time (UTC+05:00)'] -
-                            df['Meter Begin Time (UTC+05:00)']).dt.total_seconds() / 3600).round(2).map(constrain_value)
+    df['Usage Duration'] = (
+        (df['Meter End Time (UTC+05:00)'] - df['Meter Begin Time (UTC+05:00)'])
+        .dt.total_seconds() / 3600
+    ).round(2).apply(constrain_value, args=(report_month,))
 
     # Create nested dictionary using groupby
     result = {'regions': []}
@@ -56,7 +135,7 @@ def parse_excel_report(file_path):
         for resource_type, rt_group in region_group.groupby('Resource Type'):
             instances_list = []
 
-            if resource_type.lower() == 'ecs':
+            if trim_lower_normalize(resource_type) == ResourceType.ECS.value:
                 # Filter rows where Tag contains 'cce' or 'cluster' (case-insensitive)
                 rt_group_cluster = rt_group[rt_group['Tag'].str.lower(
                 ).str.contains('cce|cluster', na=False)]
@@ -68,60 +147,72 @@ def parse_excel_report(file_path):
                 if len(rt_group_cluster) > 0:
                     for _, row in rt_group_cluster.iterrows():
                         parsed_metrics = parse_ecs_data(row['Metering Metric'])
-                        instances_list.append(
-                            {**drop_columns_from_df(row).to_dict(), **parsed_metrics, 'Service Type': 'clustered'})
+                        combined_data = {
+                            **drop_columns_from_df(row).to_dict(),
+                            **parsed_metrics,
+                            'Service Type': ServiceTag.CLUSTERED.value
+                        }
+                        usage_cost = calculate_usage_cost(
+                            combined_data, rt=ResourceType.ECS, service_tag=ServiceTag.CLUSTERED)
+                        instances_list.append({
+                            **combined_data,
+                            'Usage Cost': usage_cost
+                        })
 
                 if len(rt_group_dedicated) > 0:
                     for _, row in rt_group_dedicated.iterrows():
                         parsed_metrics = parse_ecs_data(row['Metering Metric'])
-                        instances_list.append(
-                            {**drop_columns_from_df(row).to_dict(), **parsed_metrics, 'Service Type': 'dedicated'})
+                        combined_data = {
+                            **drop_columns_from_df(row).to_dict(),
+                            **parsed_metrics,
+                            'Service Type': ServiceTag.DEDICATED.value
+                        }
+                        usage_cost = calculate_usage_cost(
+                            combined_data, rt=ResourceType.ECS, service_tag=ServiceTag.DEDICATED)
+                        instances_list.append({
+                            **combined_data,
+                            'Usage Cost': usage_cost
+                        })
 
-            elif resource_type.lower() == 'evs':
-                # Filter rows where Tag contains 'cce' or 'cluster' (case-insensitive)
-                rt_group_cluster = rt_group[rt_group['Tag'].str.lower(
-                ).str.contains('cce|cluster', na=False)]
+            elif trim_lower_normalize(resource_type) == ResourceType.EVS.value:
+                # filter rows where Metering Metric contains 'ssd' or 'sata' (case-insensitive)
+                rt_group_ssd = rt_group[rt_group['Metering Metric'].str.lower(
+                ).str.contains('ssd', na=False)]
+                rt_group_hdd = rt_group[rt_group['Metering Metric'].str.lower(
+                ).str.contains('sata', na=False)]
 
-                # Filter rows where Tag doesn't contains 'cce' or 'cluster' (case-insensitive)
-                rt_group_dedicated = rt_group[~rt_group['Tag'].str.lower(
-                ).str.contains('cce|cluster', na=False)]
+                if len(rt_group_ssd) > 0:
+                    for _, row in rt_group_ssd.iterrows():
+                        usage_cost = calculate_usage_cost(
+                            row, rt=ResourceType.EVS, storage_type=StorageType.SSD)
+                        instances_list.append({
+                            **drop_columns_from_df(row).to_dict(),
+                            'Usage Cost': usage_cost,
+                            'Storage Type': StorageType.SSD.value
+                        })
 
-                if len(rt_group_cluster) > 0:
-                    # Filter rows where Tag contains 'cce' or 'cluster' (case-insensitive)
-                    rt_group_ssd = rt_group_cluster[rt_group_cluster['Metering Metric'].str.lower(
-                    ).str.contains('ssd', na=False)]
-                    rt_group_hdd = rt_group_cluster[rt_group_cluster['Metering Metric'].str.lower(
-                    ).str.contains('sata', na=False)]
+                if len(rt_group_hdd) > 0:
+                    for _, row in rt_group_hdd.iterrows():
+                        usage_cost = calculate_usage_cost(
+                            row, rt=ResourceType.EVS, storage_type=StorageType.HDD)
+                        instances_list.append({
+                            **drop_columns_from_df(row).to_dict(),
+                            'Usage Cost': usage_cost,
+                            'Storage Type': StorageType.HDD.value
+                        })
 
-                    if len(rt_group_ssd) > 0:
-                        for _, row in rt_group_ssd.iterrows():
-                            instances_list.append(
-                                {**drop_columns_from_df(row).to_dict(), 'Service Type': 'clustered', 'Storage Type': 'ssd'})
-
-                    if len(rt_group_hdd) > 0:
-                        for _, row in rt_group_hdd.iterrows():
-                            instances_list.append(
-                                {**drop_columns_from_df(row).to_dict(), 'Service Type': 'clustered', 'Storage Type': 'hdd'})
-
-                if len(rt_group_dedicated) > 0:
-                    # Filter rows where Tag contains 'cce' or 'cluster' (case-insensitive)
-                    rt_group_ssd = rt_group_dedicated[rt_group_dedicated['Metering Metric'].str.lower(
-                    ).str.contains('ssd', na=False)]
-                    rt_group_hdd = rt_group_dedicated[rt_group_dedicated['Metering Metric'].str.lower(
-                    ).str.contains('sata', na=False)]
-
-                    if len(rt_group_ssd) > 0:
-                        for _, row in rt_group_ssd.iterrows():
-                            instances_list.append(
-                                {**drop_columns_from_df(row).to_dict(), 'Service Type': 'dedicated', 'Storage Type': 'ssd'})
-
-                    if len(rt_group_hdd) > 0:
-                        for _, row in rt_group_hdd.iterrows():
-                            instances_list.append(
-                                {**drop_columns_from_df(row).to_dict(), 'Service Type': 'dedicated', 'Storage Type': 'hdd'})
             else:
                 for _, row in rt_group.iterrows():
-                    instances_list.append(drop_columns_from_df(row).to_dict())
+                    usage_cost = calculate_usage_cost(
+                        row,
+                        rt={e.value: e for e in ResourceType}.get(
+                            trim_lower_normalize(resource_type)
+                        )
+                    )
+                    instances_list.append({
+                        **drop_columns_from_df(row).to_dict(),
+                        'Usage Cost': usage_cost
+                    })
 
             services_list.append({
                 'serviceName': resource_type,
@@ -147,4 +238,3 @@ def validate_po_data(data):
         return (False, "Invalid email")
 
     return (True, None)
-
