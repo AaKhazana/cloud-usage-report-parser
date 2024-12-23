@@ -102,12 +102,15 @@ def parse_excel_report(file_path):
         .dt.total_seconds() / 3600
     ).round(2).apply(constrain_value, args=(report_month,))
 
+    df.loc[df['Resource Type'].str.contains('snapshot', case=False, na=False), 'Resource Type'] = 'EVS'
+
     # Create nested dictionary using groupby
     result = {'regions': []}
     for region, region_group in df.groupby('Region'):
         services_list = []
         for resource_type, rt_group in region_group.groupby('Resource Type'):
             instances_list = []
+            print(resource_type, trim_lower_normalize(resource_type), ResourceType.EVS.value in trim_lower_normalize(resource_type))
 
             if trim_lower_normalize(resource_type) == ResourceType.ECS.value:
                 clustered_instances_list = []
@@ -152,7 +155,7 @@ def parse_excel_report(file_path):
                         })
 
                 services_list.append({
-                    'serviceName': resource_type,
+                    'serviceName': ResourceType.ECS.value.upper(),
                     'instances': {
                         "dedicated": dedicated_instances_list,
                         "clustered": clustered_instances_list
