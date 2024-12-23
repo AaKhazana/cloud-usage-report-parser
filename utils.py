@@ -163,7 +163,7 @@ def parse_excel_report(file_path):
             elif ResourceType.EVS.value in trim_lower_normalize(resource_type):
                 # filter rows where Metering Metric contains 'ssd' or 'sata' (case-insensitive)
                 rt_group_ssd = rt_group[rt_group['Metering Metric'].str.lower(
-                ).str.contains('ssd', na=False)]
+                ).str.contains('ssd|snapshot', na=False)]
                 rt_group_hdd = rt_group[rt_group['Metering Metric'].str.lower(
                 ).str.contains('sata', na=False)]
 
