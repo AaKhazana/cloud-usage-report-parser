@@ -1,33 +1,7 @@
 import pandas as pd
-from datetime import datetime
 import re
-from enum import Enum
 import sqlite
-
-MONTH_31_DAYS = [1, 3, 5, 7, 8, 10, 12]
-MONTH_30_DAYS = [4, 6, 9, 11]
-MONTH_28_DAYS = [2]
-
-
-class ResourceType(Enum):
-    ECS = "ecs"
-    EVS = "evs"
-    EIP = "eip"
-    EIP_BANDWIDTH = "eip-bandwidth"
-    ELB = "elb"
-    NAT = "nat-gateway"
-    VPN = "virtual-private-network"
-    VPN_BANDWIDTH = "vpn-bandwidth"
-
-
-class StorageType(Enum):
-    SSD = "ssd"
-    HDD = "hdd"
-
-
-class ServiceTag(Enum):
-    CLUSTERED = "clustered"
-    DEDICATED = "dedicated"
+from constants import *
 
 
 def trim_lower_normalize(string: str) -> str:
@@ -66,18 +40,18 @@ def parse_ecs_data(data_string: str) -> dict | None:
 
 def constrain_value(value, month):
     if month in MONTH_31_DAYS:
-        if value >= 730:
-            return 730
+        if value >= HOURS_31_DAYS:
+            return STANDARD_CLOUD_HOURS
         else:
             return value
     elif month in MONTH_30_DAYS:
-        if value >= 720:
-            return 730
+        if value >= HOURS_30_DAYS:
+            return STANDARD_CLOUD_HOURS
         else:
             return value
     elif month in MONTH_28_DAYS:
-        if value >= 672:
-            return 730
+        if value >= HOURS_28_DAYS:
+            return STANDARD_CLOUD_HOURS
         else:
             return value
     else:
@@ -136,6 +110,9 @@ def parse_excel_report(file_path):
             instances_list = []
 
             if trim_lower_normalize(resource_type) == ResourceType.ECS.value:
+                clustered_instances_list = []
+                dedicated_instances_list = []
+
                 # Filter rows where Tag contains 'cce' or 'cluster' (case-insensitive)
                 rt_group_cluster = rt_group[rt_group['Tag'].str.lower(
                 ).str.contains('cce|cluster', na=False)]
@@ -154,7 +131,7 @@ def parse_excel_report(file_path):
                         }
                         usage_cost = calculate_usage_cost(
                             combined_data, rt=ResourceType.ECS, service_tag=ServiceTag.CLUSTERED)
-                        instances_list.append({
+                        clustered_instances_list.append({
                             **combined_data,
                             'Usage Cost': usage_cost
                         })
@@ -169,12 +146,21 @@ def parse_excel_report(file_path):
                         }
                         usage_cost = calculate_usage_cost(
                             combined_data, rt=ResourceType.ECS, service_tag=ServiceTag.DEDICATED)
-                        instances_list.append({
+                        dedicated_instances_list.append({
                             **combined_data,
                             'Usage Cost': usage_cost
                         })
 
-            elif ResourceType.EVS.value in trim_lower_normalize(resource_type):
+                services_list.append({
+                    'serviceName': resource_type,
+                    'instances': {
+                        "dedicated": dedicated_instances_list,
+                        "clustered": clustered_instances_list
+                    }
+                })
+                continue
+
+            elif trim_lower_normalize(resource_type) == ResourceType.EVS.value:
                 # filter rows where Metering Metric contains 'ssd' or 'sata' (case-insensitive)
                 rt_group_ssd = rt_group[rt_group['Metering Metric'].str.lower(
                 ).str.contains('ssd', na=False)]
