@@ -110,7 +110,6 @@ def parse_excel_report(file_path):
         services_list = []
         for resource_type, rt_group in region_group.groupby('Resource Type'):
             instances_list = []
-            print(resource_type, trim_lower_normalize(resource_type), ResourceType.EVS.value in trim_lower_normalize(resource_type))
 
             if trim_lower_normalize(resource_type) == ResourceType.ECS.value:
                 clustered_instances_list = []
