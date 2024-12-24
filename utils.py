@@ -102,7 +102,9 @@ def parse_excel_report(file_path):
         .dt.total_seconds() / 3600
     ).round(2).apply(constrain_value, args=(report_month,))
 
-    df.loc[df['Resource Type'].str.contains('snapshot', case=False, na=False), 'Resource Type'] = 'EVS'
+    df.loc[df['Resource Type'].str.contains('evs-snapshot', case=False, na=False), 'Resource Type'] = 'EVS'
+    df.loc[df['Metering Metric'].str.contains('evs-snapshot', case=False, na=False), 'Metering Metric'] = 'evs-ssd'
+    df.loc[df['Metering Metric'].str.contains('pacific', case=False, na=False), 'Metering Metric'] = 'evs-sata'
 
     # Create nested dictionary using groupby
     result = {'regions': []}
@@ -165,7 +167,7 @@ def parse_excel_report(file_path):
             elif ResourceType.EVS.value in trim_lower_normalize(resource_type):
                 # filter rows where Metering Metric contains 'ssd' or 'sata' (case-insensitive)
                 rt_group_ssd = rt_group[rt_group['Metering Metric'].str.lower(
-                ).str.contains('ssd|snapshot', na=False)]
+                ).str.contains('ssd', na=False)]
                 rt_group_hdd = rt_group[rt_group['Metering Metric'].str.lower(
                 ).str.contains('sata', na=False)]
 
@@ -224,5 +226,17 @@ def validate_po_data(data):
 
     if '@' not in data['user-info']['email']:
         return (False, "Invalid email")
+
+    return (True, None)
+
+def validate_user_data(data):
+    if '@' not in data['email']:
+        return (False, "Invalid email")
+    
+    if len(data["full_name"]) < 3:
+        return (False, "Name is required and must have 3 or more characters")
+
+    if len(data["password"]) < 3:
+        return (False, "Password is required and must have 3 or more characters")
 
     return (True, None)

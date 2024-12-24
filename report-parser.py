@@ -7,11 +7,13 @@ import argparse
 import sqlite
 from utils import parse_excel_report
 from po_controller import po_controller
+from users_controller import users_controller
 
 app = Flask(__name__)
 CORS(app)
 
 app.register_blueprint(po_controller, url_prefix='/po')
+app.register_blueprint(users_controller, url_prefix='/users')
 
 
 @app.route('/upload', methods=['POST'])

@@ -12,7 +12,7 @@ def get_po():
     result = db.run_query(query)
     if not result:
         return jsonify({"error": "No POs found"}), 404
-    
+
     response = []
     for po in result:
         po_data = {
@@ -27,8 +27,6 @@ def get_po():
         response.append(po_data)
     return jsonify({"message": "List of POs", "data": response})
 
-# TODO: get po by id
-
 
 @po_controller.route('/get/<id>', methods=['GET'])
 def get_po_by_id(id):
@@ -38,7 +36,7 @@ def get_po_by_id(id):
     print(result)
     if not result:
         return jsonify({"error": "PO not found"}), 404
-    
+
     user_id = result[0][0]
     query = "SELECT * FROM po_elastic_services WHERE user_id = ?"
     elastic_services = db.run_query(query, (user_id,))
@@ -219,9 +217,7 @@ def add_po():
     """
     Add new Purchase Order
     """
-
     data = request.get_json()
-    # print(data)
 
     if not data:
         return jsonify({"error": "No data provided"}), 400
@@ -233,9 +229,7 @@ def add_po():
 
     db = sqlite.DatabaseService()
 
-    insert_po_user_query = """
-        INSERT INTO po_users (full_name, email, ntn_number, address) VALUES (?, ?, ?, ?)
-    """
+    insert_po_user_query = """INSERT INTO po_users (full_name, email, ntn_number, address) VALUES (?, ?, ?, ?)"""
 
     user_id = db.run_query(
         insert_po_user_query,
@@ -414,6 +408,5 @@ def add_po():
             pass
 
     db.commit()
-
 
     return jsonify({"message": "PO added successfully"})
