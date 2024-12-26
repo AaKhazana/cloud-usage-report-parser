@@ -9,8 +9,9 @@ users_controller = Blueprint('user_controller', __name__)
 
 # TODO: Implement the following routes
 # 1. GET /users/get/<id> - Get single user by id
-# 2. POST /users/update/<id> - Update user by id
+# 2. POST /users/update - Update user by id
 # 3. DELETE /users/delete/<id> - Delete user by id
+
 
 @users_controller.route('/get', methods=['GET'])
 def get_all_users():

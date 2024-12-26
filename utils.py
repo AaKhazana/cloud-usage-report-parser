@@ -102,9 +102,12 @@ def parse_excel_report(file_path):
         .dt.total_seconds() / 3600
     ).round(2).apply(constrain_value, args=(report_month,))
 
-    df.loc[df['Resource Type'].str.contains('evs-snapshot', case=False, na=False), 'Resource Type'] = 'EVS'
-    df.loc[df['Metering Metric'].str.contains('evs-snapshot', case=False, na=False), 'Metering Metric'] = 'evs-ssd'
-    df.loc[df['Metering Metric'].str.contains('pacific', case=False, na=False), 'Metering Metric'] = 'evs-sata'
+    df.loc[df['Resource Type'].str.contains(
+        'evs-snapshot', case=False, na=False), 'Resource Type'] = 'EVS'
+    df.loc[df['Metering Metric'].str.contains(
+        'evs-snapshot', case=False, na=False), 'Metering Metric'] = 'evs-ssd'
+    df.loc[df['Metering Metric'].str.contains(
+        'pacific', case=False, na=False), 'Metering Metric'] = 'evs-sata'
 
     # Create nested dictionary using groupby
     result = {'regions': []}
@@ -229,10 +232,11 @@ def validate_po_data(data):
 
     return (True, None)
 
+
 def validate_user_data(data):
     if '@' not in data['email']:
         return (False, "Invalid email")
-    
+
     if len(data["full_name"]) < 3:
         return (False, "Name is required and must have 3 or more characters")
 
