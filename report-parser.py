@@ -84,8 +84,8 @@ def update_unit_costs():
             if not result:
                 continue
 
-            unit_cost = item.get('unit_cost', result[0][3])
-            unit_cost_margin = unit_cost + unit_cost * \
+            unit_cost = float(item.get('unit_cost', result[0][3]))
+            unit_cost_margin = (unit_cost) + unit_cost * \
                 (item.get('profit_margin', result[0][2]) / 100)
             appx_monthly_cost = unit_cost_margin * 730
 
