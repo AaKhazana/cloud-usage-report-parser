@@ -108,8 +108,8 @@ def parse_excel_report(file_path):
 
     df.loc[df['Resource Type'].str.contains(
         'evs-snapshot', case=False, na=False), 'Resource Type'] = 'EVS'
-    df.loc[df['Metering Metric'].str.contains(
-        'evs-snapshot', case=False, na=False), 'Metering Metric'] = 'evs-ssd'
+    # df.loc[df['Metering Metric'].str.contains(
+    #     'evs-snapshot', case=False, na=False), 'Metering Metric'] = 'evs-ssd'
     df.loc[df['Metering Metric'].str.contains(
         'pacific', case=False, na=False), 'Metering Metric'] = 'evs-sata'
 
@@ -175,11 +175,23 @@ def parse_excel_report(file_path):
                 # filter rows where Metering Metric contains 'ssd' or 'sata' (case-insensitive)
                 rt_group_ssd = rt_group[rt_group['Metering Metric'].str.lower(
                 ).str.contains('ssd', na=False)]
+                rt_group_snapshot = rt_group[rt_group['Metering Metric'].str.lower(
+                ).str.contains('snapshot', na=False)]
                 rt_group_hdd = rt_group[rt_group['Metering Metric'].str.lower(
                 ).str.contains('sata', na=False)]
 
                 if len(rt_group_ssd) > 0:
                     for _, row in rt_group_ssd.iterrows():
+                        usage_cost = calculate_usage_cost(
+                            row, rt=ResourceType.EVS, storage_type=StorageType.SSD)
+                        instances_list.append({
+                            **drop_columns_from_df(row).to_dict(),
+                            'Usage Cost': usage_cost,
+                            'Storage Type': StorageType.SSD.value
+                        })
+
+                if len(rt_group_snapshot) > 0:
+                    for _, row in rt_group_snapshot.iterrows():
                         usage_cost = calculate_usage_cost(
                             row, rt=ResourceType.EVS, storage_type=StorageType.SSD)
                         instances_list.append({
