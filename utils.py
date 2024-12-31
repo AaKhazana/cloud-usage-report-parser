@@ -39,17 +39,17 @@ def parse_ecs_data(data_string: str) -> dict | None:
 
 
 def constrain_value(value, month):
-    if month in MONTH_31_DAYS:
+    if month in MONTH_31_DAYS: # 744
         if value >= HOURS_31_DAYS:
             return STANDARD_CLOUD_HOURS
         else:
             return value
-    elif month in MONTH_30_DAYS:
+    elif month in MONTH_30_DAYS: # 720
         if value >= HOURS_30_DAYS:
             return STANDARD_CLOUD_HOURS
         else:
             return value
-    elif month in MONTH_28_DAYS:
+    elif month in MONTH_28_DAYS: # 672
         if value >= HOURS_28_DAYS:
             return STANDARD_CLOUD_HOURS
         else:
@@ -89,6 +89,10 @@ def calculate_usage_cost(data: pd.Series, rt: ResourceType, storage_type: Storag
 def parse_excel_report(file_path):
     # Read the Excel file
     df = pd.read_excel(file_path)
+    # Drop columns with "Unnamed" in their names
+    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+
+    # TODO: update the code to use metering value instead of begin time and end time.
 
     # Convert time columns to datetime once
     df['Meter Begin Time (UTC+05:00)'] = pd.to_datetime(
@@ -218,19 +222,6 @@ def parse_excel_report(file_path):
         })
 
     return result
-
-
-def validate_po_data(data):
-    if not data.get('user-info') or data['user-info']['name'] == '' or data['user-info']['email'] == '':
-        return (False, "User info is required")
-
-    if len(data['services']) == 0:
-        return (False, "Services are required")
-
-    if '@' not in data['user-info']['email']:
-        return (False, "Invalid email")
-
-    return (True, None)
 
 
 def validate_user_data(data):
