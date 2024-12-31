@@ -65,20 +65,20 @@ def calculate_usage_cost(data: pd.Series, rt: ResourceType, storage_type: Storag
     usage_cost = 0
     if rt == ResourceType.ECS:
         if service_tag == ServiceTag.CLUSTERED:
-            usage_cost = ((data['Memory'] * costs[1][4]) +
-                          (data['vCPUs'] * costs[6][4])) * data['Usage Duration']
+            usage_cost = ((data['Memory'] * costs[1][4]) + (data['vCPUs'] * costs[6][4])) * data['Usage Duration']
         elif service_tag == ServiceTag.DEDICATED:
-            usage_cost = ((data['Memory'] * costs[1][4]) +
-                          (data['vCPUs'] * costs[0][4])) * data['Usage Duration']
+            usage_cost = ((data['Memory'] * costs[1][4]) + (data['vCPUs'] * costs[0][4])) * data['Usage Duration']
     elif rt == ResourceType.EVS:
         if storage_type == StorageType.SSD:
-            usage_cost = (data['Usage'] * costs[3][4]) * data['Usage Duration']
+            usage_cost = data['Usage'] * (data['Metering Value'] / data['Usage']) * costs[3][4]
         elif storage_type == StorageType.HDD:
-            usage_cost = (data['Usage'] * costs[2][4]) * data['Usage Duration']
+            usage_cost = data['Usage'] * (data['Metering Value'] / data['Usage']) * costs[2][4]
     elif rt == ResourceType.EIP:
-        usage_cost = (data['Usage'] * costs[14][4]) * data['Usage Duration']
-    elif rt == ResourceType.EIP_BANDWIDTH:
-        usage_cost = (data['Usage'] * costs[15][5])
+        usage_cost = data['Usage'] * costs[14][4] * data['Usage Duration']
+    elif rt == ResourceType.BANDWIDTH:
+        usage_cost = data['Usage'] * costs[15][5]
+    elif rt == ResourceType.VPN:
+        usage_cost = data['Usage'] * costs[16][4] * data['Metering Value']
     else:
         # TODO: update this when services are not value added
         pass
@@ -92,26 +92,24 @@ def parse_excel_report(file_path):
     # Drop columns with "Unnamed" in their names
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
 
-    # TODO: update the code to use metering value instead of begin time and end time.
-
     # Convert time columns to datetime once
-    df['Meter Begin Time (UTC+05:00)'] = pd.to_datetime(
-        df['Meter Begin Time (UTC+05:00)'])
+    df['Meter Begin Time (UTC+05:00)'] = pd.to_datetime(df['Meter Begin Time (UTC+05:00)'])
     df['Meter End Time (UTC+05:00)'] = pd.to_datetime(df['Meter End Time (UTC+05:00)'])
 
     report_month = df['Meter Begin Time (UTC+05:00)'].dt.month.unique()[0]
     # Calculate usage duration for all rows at once and truncate to 2 decimal places
-    df['Usage Duration'] = (
-        (df['Meter End Time (UTC+05:00)'] - df['Meter Begin Time (UTC+05:00)'])
-        .dt.total_seconds() / 3600
-    ).round(2).apply(constrain_value, args=(report_month,))
+    # df['Usage Duration'] = (
+    #     (df['Meter End Time (UTC+05:00)'] - df['Meter Begin Time (UTC+05:00)'])
+    #     .dt.total_seconds() / 3600
+    # ).round(2).apply(constrain_value, args=(report_month,))
 
-    df.loc[df['Resource Type'].str.contains(
-        'evs-snapshot', case=False, na=False), 'Resource Type'] = 'EVS'
-    # df.loc[df['Metering Metric'].str.contains(
-    #     'evs-snapshot', case=False, na=False), 'Metering Metric'] = 'evs-ssd'
-    df.loc[df['Metering Metric'].str.contains(
-        'pacific', case=False, na=False), 'Metering Metric'] = 'evs-sata'
+    df['Usage Duration'] = ((df['Meter End Time (UTC+05:00)'] - df['Meter Begin Time (UTC+05:00)']).dt.total_seconds() / 3600).round(2)
+
+    df.loc[df['Resource Type'].str.contains('evs-snapshot', case=False, na=False), 'Resource Type'] = 'EVS'
+    df.loc[df['Metering Metric'].str.contains('pacific', case=False, na=False), 'Metering Metric'] = 'EVS-Sata'
+    
+    df.loc[df['Resource Type'].str.contains('bandwidth', case=False, na=False), 'Resource Type'] = 'Bandwidth'
+    df.loc[df['Metering Metric'].str.contains('bandwidth', case=False, na=False), 'Metering Metric'] = 'Bandwidth'
 
     # Create nested dictionary using groupby
     result = {'regions': []}
@@ -125,12 +123,10 @@ def parse_excel_report(file_path):
                 dedicated_instances_list = []
 
                 # Filter rows where Tag contains 'cce' or 'cluster' (case-insensitive)
-                rt_group_cluster = rt_group[rt_group['Tag'].str.lower(
-                ).str.contains('cce|cluster', na=False)]
+                rt_group_cluster = rt_group[rt_group['Tag'].str.lower().str.contains('cce|cluster', na=False)]
 
                 # Filter rows where Tag doesn't contains 'cce' or 'cluster' (case-insensitive)
-                rt_group_dedicated = rt_group[~rt_group['Tag'].str.lower(
-                ).str.contains('cce|cluster', na=False)]
+                rt_group_dedicated = rt_group[~rt_group['Tag'].str.lower().str.contains('cce|cluster', na=False)]
 
                 if len(rt_group_cluster) > 0:
                     for _, row in rt_group_cluster.iterrows():
@@ -141,7 +137,10 @@ def parse_excel_report(file_path):
                             'Service Type': ServiceTag.CLUSTERED.value
                         }
                         usage_cost = calculate_usage_cost(
-                            combined_data, rt=ResourceType.ECS, service_tag=ServiceTag.CLUSTERED)
+                            combined_data,
+                            rt=ResourceType.ECS,
+                            service_tag=ServiceTag.CLUSTERED
+                        )
                         clustered_instances_list.append({
                             **combined_data,
                             'Usage Cost': usage_cost
@@ -156,7 +155,10 @@ def parse_excel_report(file_path):
                             'Service Type': ServiceTag.DEDICATED.value
                         }
                         usage_cost = calculate_usage_cost(
-                            combined_data, rt=ResourceType.ECS, service_tag=ServiceTag.DEDICATED)
+                            combined_data,
+                            rt=ResourceType.ECS,
+                            service_tag=ServiceTag.DEDICATED
+                        )
                         dedicated_instances_list.append({
                             **combined_data,
                             'Usage Cost': usage_cost
@@ -173,17 +175,17 @@ def parse_excel_report(file_path):
 
             elif ResourceType.EVS.value in trim_lower_normalize(resource_type):
                 # filter rows where Metering Metric contains 'ssd' or 'sata' (case-insensitive)
-                rt_group_ssd = rt_group[rt_group['Metering Metric'].str.lower(
-                ).str.contains('ssd', na=False)]
-                rt_group_snapshot = rt_group[rt_group['Metering Metric'].str.lower(
-                ).str.contains('snapshot', na=False)]
-                rt_group_hdd = rt_group[rt_group['Metering Metric'].str.lower(
-                ).str.contains('sata', na=False)]
+                rt_group_ssd = rt_group[rt_group['Metering Metric'].str.lower().str.contains('ssd', na=False)]
+                rt_group_snapshot = rt_group[rt_group['Metering Metric'].str.lower().str.contains('snapshot', na=False)]
+                rt_group_hdd = rt_group[rt_group['Metering Metric'].str.lower().str.contains('sata', na=False)]
 
                 if len(rt_group_ssd) > 0:
                     for _, row in rt_group_ssd.iterrows():
                         usage_cost = calculate_usage_cost(
-                            row, rt=ResourceType.EVS, storage_type=StorageType.SSD)
+                            row,
+                            rt=ResourceType.EVS,
+                            storage_type=StorageType.SSD
+                        )
                         instances_list.append({
                             **drop_columns_from_df(row).to_dict(),
                             'Usage Cost': usage_cost,
@@ -193,7 +195,10 @@ def parse_excel_report(file_path):
                 if len(rt_group_snapshot) > 0:
                     for _, row in rt_group_snapshot.iterrows():
                         usage_cost = calculate_usage_cost(
-                            row, rt=ResourceType.EVS, storage_type=StorageType.SSD)
+                            row,
+                            rt=ResourceType.EVS,
+                            storage_type=StorageType.SSD
+                        )
                         instances_list.append({
                             **drop_columns_from_df(row).to_dict(),
                             'Usage Cost': usage_cost,
@@ -203,7 +208,10 @@ def parse_excel_report(file_path):
                 if len(rt_group_hdd) > 0:
                     for _, row in rt_group_hdd.iterrows():
                         usage_cost = calculate_usage_cost(
-                            row, rt=ResourceType.EVS, storage_type=StorageType.HDD)
+                            row,
+                            rt=ResourceType.EVS,
+                            storage_type=StorageType.HDD
+                        )
                         instances_list.append({
                             **drop_columns_from_df(row).to_dict(),
                             'Usage Cost': usage_cost,

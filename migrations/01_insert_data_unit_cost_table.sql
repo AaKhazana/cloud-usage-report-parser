@@ -134,4 +134,12 @@ VALUES (
         0.010958904,
         8,
         'These Prices are based on Khazana feedback and can be changed if required.'
+    ),
+    (
+        'Virtual Private Network',
+        150,
+        0.02575,
+        0.0643835616438356,
+        47,
+        'These Prices are based on Khazana feedback and can be changed if required.'
     );

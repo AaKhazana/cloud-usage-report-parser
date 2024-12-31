@@ -14,7 +14,7 @@ class ResourceType(Enum):
     ECS = "ecs"
     EVS = "evs"
     EIP = "eip"
-    EIP_BANDWIDTH = "eip-bandwidth"
+    BANDWIDTH = "bandwidth"
     ELB = "elb"
     NAT = "nat-gateway"
     VPN = "virtual-private-network"
