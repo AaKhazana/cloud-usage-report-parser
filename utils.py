@@ -39,17 +39,17 @@ def parse_ecs_data(data_string: str) -> dict | None:
 
 
 def constrain_value(value, month):
-    if month in MONTH_31_DAYS: # 744
+    if month in MONTH_31_DAYS:  # 744
         if value >= HOURS_31_DAYS:
             return STANDARD_CLOUD_HOURS
         else:
             return value
-    elif month in MONTH_30_DAYS: # 720
+    elif month in MONTH_30_DAYS:  # 720
         if value >= HOURS_30_DAYS:
             return STANDARD_CLOUD_HOURS
         else:
             return value
-    elif month in MONTH_28_DAYS: # 672
+    elif month in MONTH_28_DAYS:  # 672
         if value >= HOURS_28_DAYS:
             return STANDARD_CLOUD_HOURS
         else:
@@ -234,4 +234,14 @@ def validate_user_data(data):
     if len(data["password"]) < 3:
         return (False, "Password is required and must have 3 or more characters")
 
+    return (True, None)
+
+
+def validate_po_data(data):
+    if not data.get('user-info') or data['user-info']['name'] == '' or data['user-info']['email'] == '':
+        return (False, "User info is required")
+    if len(data['services']) == 0:
+        return (False, "Services are required")
+    if '@' not in data['user-info']['email']:
+        return (False, "Invalid email")
     return (True, None)
