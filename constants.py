@@ -18,7 +18,6 @@ class ResourceType(Enum):
     ELB = "elb"
     NAT = "nat-gateway"
     VPN = "virtual-private-network"
-    VPN_BANDWIDTH = "vpn-bandwidth"
 
 
 class StorageType(Enum):
