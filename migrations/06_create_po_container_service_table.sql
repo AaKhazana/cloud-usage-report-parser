@@ -8,5 +8,5 @@ CREATE TABLE IF NOT EXISTS po_container_services (
     user_id INTEGER NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES po_users(id)
+    FOREIGN KEY (user_id) REFERENCES users(id)
 );

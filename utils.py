@@ -1,7 +1,27 @@
+from flask import session
+from enum import Enum
 import pandas as pd
 import re
 import sqlite
 from constants import *
+
+
+class UnitCosts(Enum):
+    ID = 0
+    RESOURCE_DESC = 1
+    PROFIT_MARGIN = 2
+    UNIT_COST = 3
+    UNIT_COST_MARGIN = 4
+    APPX_MONTHLY_COST = 5
+    REMARKS = 6
+    CREATED_AT = 7
+    UPDATED_AT = 8
+
+
+def authenticated():
+    if not session.get('user'):
+        return False
+    return True
 
 
 def trim_lower_normalize(string: str) -> str:
@@ -103,11 +123,12 @@ def parse_excel_report(file_path):
     #     .dt.total_seconds() / 3600
     # ).round(2).apply(constrain_value, args=(report_month,))
 
-    df['Usage Duration'] = ((df['Meter End Time (UTC+05:00)'] - df['Meter Begin Time (UTC+05:00)']).dt.total_seconds() / 3600).round(2)
+    df['Usage Duration'] = ((df['Meter End Time (UTC+05:00)'] -
+                            df['Meter Begin Time (UTC+05:00)']).dt.total_seconds() / 3600).round(2)
 
     df.loc[df['Resource Type'].str.contains('evs-snapshot', case=False, na=False), 'Resource Type'] = 'EVS'
     df.loc[df['Metering Metric'].str.contains('pacific', case=False, na=False), 'Metering Metric'] = 'EVS-Sata'
-    
+
     df.loc[df['Resource Type'].str.contains('bandwidth', case=False, na=False), 'Resource Type'] = 'Bandwidth'
     df.loc[df['Metering Metric'].str.contains('bandwidth', case=False, na=False), 'Metering Metric'] = 'Bandwidth'
 

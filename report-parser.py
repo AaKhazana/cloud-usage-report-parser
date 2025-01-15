@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 import os
 import argparse
 import sqlite
-from utils import parse_excel_report
+from utils import parse_excel_report, authenticated, UnitCosts
 from po_controller import po_controller
-from users_controller import users_controller
+from users_controller import users_controller, UserColumns
+from flask_session import Session
 
 app = Flask(__name__)
-CORS(app)
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config["SESSION_COOKIE_SAMESITE"] = 'None'
+app.config["SESSION_COOKIE_SECURE"] = 'False'
+CORS(app, origins=['*'], supports_credentials=True)
+Session(app)
 
 app.register_blueprint(po_controller, url_prefix='/po')
 app.register_blueprint(users_controller, url_prefix='/users')
@@ -18,11 +23,14 @@ app.register_blueprint(users_controller, url_prefix='/users')
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
+    if not authenticated():
+        return jsonify({"message": "Not authorized!"}), 401
+
     if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
+        return jsonify({"message": "No file part"}), 400
     file = request.files['file']
     if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
+        return jsonify({"message": "No selected file"}), 400
     if file:
         if not os.path.exists(os.path.join(os.path.dirname(__file__), 'uploads')):
             os.makedirs(os.path.join(os.path.dirname(__file__), 'uploads'))
@@ -37,36 +45,49 @@ def upload_file():
 
 @app.route('/unit-costs', methods=['GET'])
 def get_unit_costs():
+    if not authenticated():
+        return jsonify({"message": "Not authorized!"}), 401
+
+    is_admin = session['user'][UserColumns.IS_ADMIN.value]
     try:
         db = sqlite.DatabaseService()
         results = db.run_query("SELECT * FROM unit_costs")
 
         unit_costs = []
         for row in results:
-            unit_costs.append({
-                "id": row[0],
-                "resource_desc": row[1],
-                "profit_margin": row[2],
-                "unit_cost": row[3],
-                "unit_cost_margin": row[4],
-                "appx_monthly_cost": row[5],
-                "remarks": row[6]
-            })
+            cost_row = {}
+            cost_row['id'] = row[UnitCosts.ID.value]
+            cost_row['resource_desc'] = row[UnitCosts.RESOURCE_DESC.value]
+            cost_row['unit_cost_margin'] = row[UnitCosts.UNIT_COST_MARGIN.value]
+            cost_row['appx_monthly_cost'] = row[UnitCosts.APPX_MONTHLY_COST.value]
+            if is_admin:
+                cost_row['profit_margin'] = row[UnitCosts.PROFIT_MARGIN.value]
+                cost_row['unit_cost'] = row[UnitCosts.UNIT_COST.value]
+                cost_row['remarks'] = row[UnitCosts.REMARKS.value]
+
+            unit_costs.append(cost_row)
 
         return jsonify({"unit_costs": unit_costs})
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"message": str(e)}), 500
 
 
 @app.route('/unit-costs', methods=['POST'])
 def update_unit_costs():
+    if not authenticated():
+        return jsonify({"message": "Not authorized!"}), 401
+
+    is_admin = session['user'][UserColumns.IS_ADMIN.value]
+    if not is_admin:
+        return jsonify({"message": "Not authorized!"}), 401
+
     try:
         data = request.get_json()
         if not isinstance(data, list):
-            return jsonify({"error": "Request body must be an array"}), 400
+            return jsonify({"message": "Request body must be an array"}), 400
 
         if len(data) == 0:
-            return jsonify({"error": "No data to update"}), 400
+            return jsonify({"message": "No data to update"}), 400
 
         db = sqlite.DatabaseService()
         updated_count = 0
@@ -108,7 +129,7 @@ def update_unit_costs():
                 unit_cost_margin,
                 appx_monthly_cost,
                 item.get('remarks', result[0][6]),
-                item['id']
+                item['id'],
             ))
             updated_count += 1
 
@@ -118,7 +139,7 @@ def update_unit_costs():
             "updated_count": updated_count
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"message": str(e)}), 500
 
 
 if __name__ == "__main__":
@@ -127,10 +148,14 @@ if __name__ == "__main__":
     parser.add_argument('--host', type=str, default='0.0.0.0')
     parser.add_argument('--port', type=int, default=5000)
     parser.add_argument('--debug', type=bool, default=False)
-    parser.add_argument('--migrateall', type=str, default='',
-                        help='run all migrations from folder')
-    parser.add_argument('--migrate', type=str, default='',
-                        help='run single migration file')
+    parser.add_argument(
+        '--migrateall', type=str, default='',
+        help='run all migrations from folder'
+    )
+    parser.add_argument(
+        '--migrate', type=str, default='',
+        help='run single migration file'
+    )
     args = parser.parse_args()
 
     if args.migrateall:
@@ -153,5 +178,6 @@ if __name__ == "__main__":
     app.run(
         host=args.host,
         port=args.port,
-        debug=args.debug
+        debug=args.debug,
+        reloader_interval=5
     )

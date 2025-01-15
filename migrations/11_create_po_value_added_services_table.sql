@@ -5,5 +5,6 @@ CREATE TABLE IF NOT EXISTS po_value_added_services (
     user_id INTEGER NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES po_users(id)
+    quantity INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
 );
