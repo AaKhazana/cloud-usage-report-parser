@@ -107,15 +107,15 @@ def create_user():
     """
     data = request.get_json()
 
-    # if not authenticated():
-    #     return jsonify({"message": "Not authorized!"}), 401
+    if not authenticated():
+        return jsonify({"message": "Not authorized!"}), 401
 
-    # is_admin = session['user'][UserColumns.IS_ADMIN.value]
-    # if not is_admin:
-    #     return jsonify({"message": "Not authorized!"}), 401
+    is_admin = session['user'][UserColumns.IS_ADMIN.value]
+    if not is_admin:
+        return jsonify({"message": "Not authorized!"}), 401
 
-    # if not data:
-    #     return jsonify({"message": "No data provided"}), 400
+    if not data:
+        return jsonify({"message": "No data provided"}), 400
 
     validation_result, validation_error = validate_user_data(data)
     if not validation_result:
