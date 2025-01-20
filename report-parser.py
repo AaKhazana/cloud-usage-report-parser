@@ -13,7 +13,7 @@ from flask_session import Session
 app = Flask(__name__)
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config["SESSION_COOKIE_SAMESITE"] = 'None'
-app.config["SESSION_COOKIE_SECURE"] = 'False'
+# app.config["SESSION_COOKIE_SECURE"] = 'False'
 CORS(app, origins=['*'], supports_credentials=True)
 Session(app)
 
